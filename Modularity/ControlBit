@@ -1,0 +1,63 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace SRP.ControlDigit
+{
+    public static class ControlDigitAlgo
+    {
+        public static int Upc(long number)
+        {
+            var digits = Extensions.GetDigits(number);
+            var sum = Extensions.GetWeightedSum(digits, x => 4 - x, 3);
+            return Extensions.GetAdditionTo(10, sum);
+        }
+
+        public static char Isbn10(long number)
+        {
+            var digits = Extensions.GetDigits(number);
+            var sum = Extensions.GetWeightedSum(digits, x => x + 1, 2);
+            var result = Extensions.GetAdditionTo(11, sum);
+            return result == 10 ? 'X' : (char) (48 + result);
+        }
+
+        public static int Isbn13(long number)
+        {
+            var digits = Extensions.GetDigits(number);
+            var sum = Extensions.GetWeightedSum(digits, x => 4 - x, 1);
+            return Extensions.GetAdditionTo(10, sum);
+        }
+    }
+
+    public static class Extensions
+    {
+        public static int GetAdditionTo(int divider, int source)
+        {
+            return (divider - source % divider) % divider;
+        }
+
+        public static int[] GetDigits(long number)
+        {
+            var result = new List<int>();
+            do
+            {
+                result.Add((int) (number % 10));
+                number /= 10;
+            } while (number > 0);
+
+            return result.ToArray();
+        }
+
+        public static int GetWeightedSum(IEnumerable<int> digits, Func<int, int> factorFunc, int firstFactor)
+        {
+            var sum = 0;
+            foreach (var num in digits)
+            {
+                sum += firstFactor * num;
+                firstFactor = factorFunc(firstFactor);
+            }
+
+            return sum;
+        }
+    }
+}
