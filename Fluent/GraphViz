@@ -1,0 +1,202 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using NUnit.Framework;
+using NUnit.Framework.Interfaces;
+
+namespace FluentApi.Graph
+{
+    public class DotGraphBuilder
+    {
+        private Graph Graph { get; }
+        internal List<GraphEdge> Edges;
+        internal List<GraphNode> Nodes;
+
+        public DotGraphBuilder(DotGraphBuilder source)
+        {
+            Graph = source.Graph;
+            Edges = source.Edges;
+            Nodes = source.Nodes;
+        }
+
+        public DotGraphBuilder(Graph graph)
+        {
+            Graph = graph;
+            Edges = new List<GraphEdge>();
+            Nodes = new List<GraphNode>();
+        }
+
+        public static DotGraphBuilder DirectedGraph(string graphName)
+        {
+            return new DotGraphBuilder(new Graph(graphName, true, false));
+        }
+
+        public static DotGraphBuilder NondirectedGraph(string graphName)
+        {
+            return new DotGraphBuilder(new Graph(graphName, false, false));
+        }
+
+        public DotGraphBuilderNodeAdd AddNode(string nodeName)
+        {
+            Nodes.Add(new GraphNode(nodeName));
+            return new DotGraphBuilderNodeAdd(this);
+        }
+
+        public DotGraphBuilderEdgeAdd AddEdge(string sourceNode, string destinationNode)
+        {
+            Edges.Add(new GraphEdge(sourceNode, destinationNode, Graph.Directed));
+            return new DotGraphBuilderEdgeAdd(this);
+        }
+
+        public string Build()
+        {
+            using (var writer = new StringWriter())
+            {
+                var dotWriter = new DotFormatWriter(writer);
+                writer.Write(
+                    "{0}graph {1} {{\n",
+                    Graph.Directed ? "di" : "",
+                    DotFormatWriter.EscapeId(Graph.GraphName)
+                );
+                var isFirst = true;
+                foreach (dynamic item in Nodes.Cast<object>().Concat(Edges))
+                {
+                    if (!isFirst) writer.Write(";\n");
+                    isFirst = false;
+                    dotWriter.Write(item);
+                }
+
+                if (!isFirst) writer.Write("\n");
+                writer.Write("}");
+                writer.Flush();
+                return writer.ToString();
+            }
+        }
+    }
+
+    public class DotGraphBuilderEdgeAdd : DotGraphBuilder
+    {
+        private readonly DotGraphBuilder builder;
+
+        public DotGraphBuilderEdgeAdd(DotGraphBuilder builder) : base(builder)
+        {
+            this.builder = builder;
+        }
+
+        public DotGraphBuilder With(Func<GraphEdgeDetailed, GraphEdgeDetailed> func)
+        {
+            var sourceEdge = builder.Edges[builder.Edges.Count - 1];
+            var edge = func(new GraphEdgeDetailed(sourceEdge));
+            builder.Edges[builder.Edges.Count - 1] = edge.Edge;
+            return builder;
+        }
+
+        public DotGraphBuilder With(Action<GraphEdgeDetailed> func)
+        {
+            return builder;
+        }
+    }
+
+    public class DotGraphBuilderNodeAdd : DotGraphBuilder
+    {
+        private readonly DotGraphBuilder builder;
+
+        public DotGraphBuilderNodeAdd(DotGraphBuilder builder) : base(builder)
+        {
+            this.builder = builder;
+        }
+
+        public DotGraphBuilder With(Func<GraphNodeDetailed, GraphNodeDetailed> func)
+        {
+            var sourceNode = builder.Nodes[builder.Nodes.Count - 1];
+            var node = func(new GraphNodeDetailed(sourceNode));
+            builder.Nodes[builder.Nodes.Count - 1] = node.Node;
+            return builder;
+        }
+
+        public DotGraphBuilder With(Action<GraphNodeDetailed> func)
+        {
+            return builder;
+        }
+    }
+
+    public class GraphNodeDetailed : GraphNode
+    {
+        internal GraphNode Node;
+
+        public GraphNodeDetailed(GraphNode node) : base(node.Name)
+        {
+            Node = node;
+        }
+
+        public GraphNodeDetailed Label(string label)
+        {
+            Node.Attributes["label"] = label;
+            return this;
+        }
+
+        public GraphNodeDetailed Color(string color)
+        {
+            Node.Attributes["color"] = color;
+            return this;
+        }
+
+        public GraphNodeDetailed Shape(NodeShape shape)
+        {
+            Node.Attributes["shape"] = shape.ToString().ToLower();
+            return this;
+        }
+
+        public GraphNodeDetailed FontSize(int size)
+        {
+            Node.Attributes["fontsize"] = size.ToString();
+            return this;
+        }
+    }
+
+    public class GraphEdgeDetailed : GraphEdge
+    {
+        internal GraphEdge Edge;
+
+        public GraphEdgeDetailed(GraphEdge edge) : base(edge.SourceNode, edge.DestinationNode, edge.Directed)
+        {
+            Edge = edge;
+        }
+
+        public GraphEdgeDetailed Label(string label)
+        {
+            Edge.Attributes["label"] = label;
+            return this;
+        }
+
+        public GraphEdgeDetailed FontSize(int size)
+        {
+            Edge.Attributes["fontsize"] = size.ToString();
+            return this;
+        }
+
+        public GraphEdgeDetailed Color(string color)
+        {
+            Edge.Attributes["color"] = color;
+            return this;
+        }
+
+        public GraphEdgeDetailed Weight(int weight)
+        {
+            Edge.Attributes["weight"] = weight.ToString();
+            return this;
+        }
+    }
+
+    public enum NodeShape
+    {
+        Box,
+        Ellipse
+    }
+}
