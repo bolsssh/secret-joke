@@ -1,0 +1,141 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Streams.Resources
+{
+    public class ResourceReaderStream : Stream
+    {
+        private readonly Stream underlayingStream;
+
+        private readonly byte[] key;
+        private bool returned;
+        private bool keySeeked;
+        private byte[] innerBuffer;
+        private int currentPosition;
+        private List<byte> value;
+
+        public ResourceReaderStream(Stream stream, string key)
+        {
+            underlayingStream = stream;
+            this.key = Encoding.ASCII.GetBytes(key);
+            innerBuffer = new byte[Constants.BufferSize];
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            while (!keySeeked)
+            {
+                if (Update() == 0)
+                    return 0;
+                SeekValue();
+            }
+
+            if (value == null)
+                value = GetValue();
+            var result = returned ? 0 : ReadPartValue(buffer, offset);
+            return result;
+        }
+
+        private int ReadPartValue(byte[] buffer, int offset)
+        {
+            for (var i = 0; i + offset < buffer.Length; i++)
+            {
+                if (currentPosition == value.Count)
+                {
+                    returned = true;
+                    break;
+                }
+
+                buffer[i + offset] = value[currentPosition++];
+            }
+            if (currentPosition == value.Count) returned = true;
+            
+            return Math.Min(buffer.Length, currentPosition);
+        }
+
+        private List<byte> GetValue()
+        {
+            var result = new List<byte>();
+
+            for (; currentPosition <= Constants.BufferSize; currentPosition++)
+            {
+                if (currentPosition == Constants.BufferSize)
+                    Update();
+
+
+                if (innerBuffer[currentPosition] == 0)
+                {
+                    if (innerBuffer[currentPosition + 1] == 1)
+                        break;
+                    currentPosition++;
+                }
+
+                result.Add(innerBuffer[currentPosition]);
+            }
+
+            currentPosition = 0;
+            return result;
+        }
+
+        private void SeekValue()
+        {
+            while (!keySeeked && currentPosition < innerBuffer.Length)
+            {
+                var current = innerBuffer[currentPosition++];
+                if (current != key[0]) continue;
+                for (var i = 1; i < key.Length; i++)
+                {
+                    current = innerBuffer[currentPosition++];
+                    if (current != key[i]) break;
+                    if (i == key.Length - 1)
+                        keySeeked = true;
+                }
+            }
+
+            currentPosition += 2;
+        }
+
+        private int Update()
+        {
+            currentPosition = 0;
+            return underlayingStream.Read(innerBuffer, 0, Constants.BufferSize);
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            return underlayingStream.Seek(offset, origin);
+        }
+
+        public override void SetLength(long value)
+        {
+            underlayingStream.SetLength(value);
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            underlayingStream.Write(buffer, offset, count);
+        }
+
+        public override bool CanRead => underlayingStream.CanRead;
+
+        public override bool CanSeek => underlayingStream.CanSeek;
+
+        public override bool CanWrite => underlayingStream.CanWrite;
+
+        public override long Length => underlayingStream.Length;
+
+        public override long Position
+        {
+            get => underlayingStream.Position;
+            set => underlayingStream.Position = value;
+        }
+    }
+}
